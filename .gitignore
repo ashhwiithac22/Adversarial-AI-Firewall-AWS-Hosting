@@ -1,3 +1,125 @@
-node_modules/
-dataset/
+# ============================================
+# Python
+# ============================================
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+pythonenv*
+
+# ============================================
+# Virtual Environment
+# ============================================
+venv/
+.venv/
+env/
+.env/
+
+# ============================================
+# IDE
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ============================================
+# Project Specific - DO NOT COMMIT DATASET
+# ============================================
+# Dataset images (too large for GitHub)
+dataset/
+dataset_full/
+*.png
+*.jpg
+*.jpeg
+*.jfif
+
+# CSV files
+*.csv
+
+# Model weights (too large)
+*.pth
+*.pt
+*.h5
+*.hdf5
+*.onnx
+*.bin
+
+# ============================================
+# Logs and Metrics
+# ============================================
+logs/
+*.log
+*.json
+!package.json
+!tsconfig.json
+
+# ============================================
+# Frontend
+# ============================================
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/*.log
+frontend/.vite/
+
+# ============================================
+# Backend
+# ============================================
+backend/__pycache__/
+*.db
+*.sqlite3
+
+# ============================================
+# RAG Vector Database
+# ============================================
+rag/vector_db/
+chroma_data/
+
+# ============================================
+# Jupyter Notebook
+# ============================================
+.ipynb_checkpoints/
+*.ipynb
+
+# ============================================
+# Environment variables
+# ============================================
+.env
+.env.*
+!.env.example
+
+# ============================================
+# Kaggle API key (CRITICAL - DO NOT COMMIT!)
+# ============================================
+kaggle.json
+~/.kaggle/
+.kaggle/
+
+# ============================================
+# Large files (ZIP, TAR, etc.)
+# ============================================
+*.zip
+*.tar
+*.gz
+*.rar
+*.7z
+
+# ============================================
+# Temporary files
+# ============================================
+temp/
+tmp/
+*.tmp
+*.temp

@@ -1,0 +1,16 @@
+torch
+torchvision
+fastapi
+uvicorn
+opencv-python
+pillow
+numpy
+pandas
+scikit-learn
+chromadb
+langchain
+sentence-transformers
+transformers
+python-multipart
+websockets
+tqdm
