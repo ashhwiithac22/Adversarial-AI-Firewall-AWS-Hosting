@@ -1,0 +1,12 @@
+torch
+torchvision
+fastapi
+uvicorn
+pillow
+numpy
+pandas
+scikit-learn
+tqdm
+python-multipart
+axios
+requests
