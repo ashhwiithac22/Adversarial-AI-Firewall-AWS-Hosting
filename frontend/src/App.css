@@ -359,3 +359,40 @@ body {
 .logs-body::-webkit-scrollbar-thumb {
   background: #3a4a3a;
 }
+
+/* RAG Button */
+.rag-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: #4a3a2a;
+  border: 1px solid #8a6a4a;
+  padding: 6px 12px;
+  color: #e0e0e0;
+  font-family: monospace;
+  font-size: 10px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  cursor: pointer;
+  z-index: 20;
+  border-radius: 2px;
+}
+
+.rag-button:hover {
+  background: #6a4a2a;
+  border-color: #aa8a6a;
+  color: white;
+}
+
+/* Log entry styling */
+.log-entry.rag .log-type {
+  color: #ccaa4d;
+}
+
+.log-entry.technical .log-type {
+  color: #4a9a4a;
+}
+
+.log-entry.action .log-type {
+  color: #ccaa4d;
+}

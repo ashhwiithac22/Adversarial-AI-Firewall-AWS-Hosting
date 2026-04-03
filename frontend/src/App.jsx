@@ -2,163 +2,235 @@ import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 
 function App() {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const [threatLevel, setThreatLevel] = useState('CLEAR');
+  const [confidence, setConfidence] = useState(0);
+  const [alerts, setAlerts] = useState([]);
+  const [scannedCount, setScannedCount] = useState(0);
+  const [threatCount, setThreatCount] = useState(0);
+  const [isProcessing, setIsProcessing] = useState(false);
+  
   // Simulation states
   const [isSimulating, setIsSimulating] = useState(false);
-  const [logs, setLogs] = useState([]);
-  const [currentImage, setCurrentImage] = useState(null);
-  const [currentPrediction, setCurrentPrediction] = useState(null);
-  const [currentConfidence, setCurrentConfidence] = useState(0);
-  const [simProgress, setSimProgress] = useState({ current: 0, total: 20 });
+  const [simProgress, setSimProgress] = useState(0);
+  const [currentSimImage, setCurrentSimImage] = useState(null);
+  const [currentSimPrediction, setCurrentSimPrediction] = useState(null);
+  const [currentSimConfidence, setCurrentSimConfidence] = useState(0);
   
-  // Upload states
+  // Upload state
   const [uploadPreview, setUploadPreview] = useState(null);
-  const [uploadResult, setUploadResult] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
   
   const simulationInterval = useRef(null);
-  const logsEndRef = useRef(null);
+  const API_BASE = 'http://localhost:8000';
 
-  // Auto-scroll logs
+  // Start video stream
   useEffect(() => {
-    if (logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [logs]);
+    const startVideo = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (err) {
+        addAlert('ERROR', 'Camera access denied');
+      }
+    };
+    startVideo();
+  }, []);
 
-  // Add log entry
-  const addLog = (type, message, prediction = null, confidence = null) => {
+  // Add alert to log
+  const addAlert = (type, message, confidenceValue = null, details = null) => {
     const timestamp = new Date().toLocaleTimeString();
-    setLogs(prev => [{
+    setAlerts(prev => [{
       id: Date.now(),
       time: timestamp,
       type: type,
       message: message,
-      prediction: prediction,
-      confidence: confidence
-    }, ...prev].slice(0, 100));
+      confidence: confidenceValue,
+      details: details
+    }, ...prev].slice(0, 30));
   };
 
-  // Fetch next image from backend
-  const fetchNextImage = async () => {
+  // Analyze image with backend
+  const analyzeImage = async (imageBlob, sourceName) => {
     try {
-      const response = await fetch('http://localhost:8000/simulate/next');
-      const data = await response.json();
+      const formData = new FormData();
+      formData.append('file', imageBlob, `${sourceName}.jpg`);
       
-      if (data.error) {
-        addLog('ERROR', data.error, null);
-        return null;
+      const response = await fetch(`${API_BASE}/api/predict`, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        const isAttack = result.prediction === 1;
+        const confidenceValue = result.confidence;
+        
+        setConfidence(confidenceValue);
+        setThreatLevel(isAttack ? 'CRITICAL' : 'CLEAR');
+        
+        if (isAttack) {
+          setThreatCount(prev => prev + 1);
+          addAlert('ATTACK', `${sourceName} → ATTACK DETECTED!`, confidenceValue);
+        } else {
+          addAlert('CLEAN', `${sourceName} → CLEAN`, confidenceValue);
+        }
+        setScannedCount(prev => prev + 1);
+        
+        return { isAttack, confidence: confidenceValue };
       }
-      
-      return data;
     } catch (error) {
-      addLog('ERROR', 'Failed to connect to backend', null);
-      return null;
+      addAlert('ERROR', `${sourceName} - API Error`);
     }
+    return null;
   };
 
-  // Process one simulation step
-  const processSimulationStep = async () => {
-    const result = await fetchNextImage();
-    
-    if (result) {
-      setCurrentImage(`http://localhost:8000${result.image_url}`);
-      setCurrentPrediction(result.prediction);
-      setCurrentConfidence(result.confidence);
-      setSimProgress({ current: result.index, total: result.total });
-      
-      const confidencePercent = Math.round(result.confidence * 100);
-      addLog(
-        result.prediction.toUpperCase(),
-        `${result.filename} → ${result.prediction.toUpperCase()} (${confidencePercent}%)`,
-        result.prediction,
-        result.confidence
-      );
-    }
-  };
+  // Camera scanning
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      if (videoRef.current && videoRef.current.videoWidth > 0 && !isProcessing && !isSimulating) {
+        setIsProcessing(true);
+        
+        try {
+          const canvas = canvasRef.current;
+          const video = videoRef.current;
+          
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+          await analyzeImage(blob, 'Camera');
+          
+        } catch (error) {
+          console.error("Camera scan error:", error);
+        } finally {
+          setIsProcessing(false);
+        }
+      }
+    }, 3000);
 
-  // Start simulation (infinite loop)
+    return () => clearInterval(interval);
+  }, [isProcessing, isSimulating]);
+
+  // Simulation
   const startSimulation = async () => {
     if (simulationInterval.current) return;
     
     setIsSimulating(true);
-    addLog('INFO', 'Simulation started - infinite loop mode', null);
+    setSimProgress(0);
+    addAlert('INFO', 'Simulation started - scanning 20 images');
     
-    // Process first image immediately
-    await processSimulationStep();
-    
-    // Set interval for subsequent images
-    simulationInterval.current = setInterval(async () => {
-      await processSimulationStep();
-    }, 1500);
-  };
-
-  // Stop simulation
-  const stopSimulation = () => {
-    if (simulationInterval.current) {
-      clearInterval(simulationInterval.current);
-      simulationInterval.current = null;
+    for (let i = 1; i <= 20; i++) {
+      setSimProgress(Math.round((i / 20) * 100));
+      setCurrentSimImage(`/simulation/${i}.jpeg`);
+      
+      try {
+        const response = await fetch(`${API_BASE}/simulate/next`);
+        const data = await response.json();
+        
+        if (data && !data.error) {
+          setCurrentSimPrediction(data.prediction);
+          setCurrentSimConfidence(data.confidence);
+          
+          addAlert(
+            data.prediction.toUpperCase(),
+            `${data.filename} → ${data.prediction.toUpperCase()} (${Math.round(data.confidence * 100)}%)`,
+            data.confidence
+          );
+        }
+        
+      } catch (error) {
+        addAlert('ERROR', `Failed to load ${i}.jpeg`);
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 1500));
     }
+    
     setIsSimulating(false);
-    addLog('INFO', 'Simulation stopped', null);
+    setCurrentSimImage(null);
+    setCurrentSimPrediction(null);
+    addAlert('INFO', 'Simulation complete!');
   };
 
-  // Reset logs
-  const resetLogs = () => {
-    setLogs([]);
-    setCurrentImage(null);
-    setCurrentPrediction(null);
-    setCurrentConfidence(0);
-    setSimProgress({ current: 0, total: 20 });
-    addLog('INFO', 'Logs cleared', null);
+  const stopSimulation = () => {
+    setIsSimulating(false);
+    setCurrentSimImage(null);
+    setCurrentSimPrediction(null);
+    addAlert('INFO', 'Simulation stopped');
   };
 
-  // Handle image upload
+  const resetAll = () => {
+    setAlerts([]);
+    setScannedCount(0);
+    setThreatCount(0);
+    setConfidence(0);
+    setThreatLevel('CLEAR');
+    addAlert('INFO', 'System reset');
+  };
+
   const handleImageUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
     
     setUploadPreview(URL.createObjectURL(file));
-    setIsUploading(true);
-    setUploadResult(null);
+    await analyzeImage(file, `Upload: ${file.name}`);
     
-    const formData = new FormData();
-    formData.append('file', file);
+    setTimeout(() => {
+      setUploadPreview(null);
+    }, 3000);
+  };
+
+  // RAG Analysis Handler with detailed response
+  const getRAGAnalysis = async () => {
+    if (threatLevel !== 'CRITICAL') {
+      addAlert('INFO', 'No active threat to analyze. Run simulation or scan an attack first.');
+      return;
+    }
+    
+    addAlert('RAG', 'Fetching AI threat analysis from Hugging Face...');
     
     try {
-      const response = await fetch('http://localhost:8000/predict', {
-        method: 'POST',
-        body: formData,
-      });
-      const result = await response.json();
+      const response = await fetch(`${API_BASE}/api/analyze-threat?prediction=attack&confidence=${confidence}&filename=current_frame`);
+      const data = await response.json();
       
-      setUploadResult(result);
-      addLog(
-        result.prediction.toUpperCase(),
-        `Upload: ${file.name} → ${result.prediction.toUpperCase()} (${Math.round(result.confidence * 100)}%)`,
-        result.prediction,
-        result.confidence
-      );
+      addAlert('RAG', `📋 REASON: ${data.reason || data.threat_assessment}`);
+      
+      if (data.technical) {
+        addAlert('TECHNICAL', `🔬 ${data.technical}`);
+      }
+      
+      addAlert('ACTION', `⚡ ACTION: ${data.recommended_action || data.action}`);
+      addAlert('RAG', `🎯 Severity: ${data.severity} | Confidence: ${Math.round(confidence * 100)}%`);
+      
     } catch (error) {
-      addLog('ERROR', `Upload failed: ${file.name}`, null);
-    } finally {
-      setIsUploading(false);
+      addAlert('ERROR', 'RAG analysis failed');
     }
   };
 
   return (
     <div className="dashboard">
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
+      
+      <button className="rag-button" onClick={getRAGAnalysis}>
+        🤖 RAG ANALYSIS
+      </button>
+      
       <div className="main-layout">
         
-        {/* LEFT PANEL - IMAGE DISPLAY */}
         <div className="image-panel">
           <div className="panel-header">🎯 CURRENT IMAGE</div>
           <div className="image-container">
-            {currentImage ? (
+            {currentSimImage ? (
               <>
-                <img src={currentImage} alt="Current" className="current-image" />
-                <div className={`prediction-overlay ${currentPrediction}`}>
-                  {currentPrediction === 'attack' ? '🔴 ATTACK DETECTED' : '🟢 CLEAN'}
-                  <span className="confidence">{Math.round(currentConfidence * 100)}%</span>
+                <img src={`${API_BASE}${currentSimImage}`} alt="Current" className="current-image" />
+                <div className={`prediction-overlay ${currentSimPrediction}`}>
+                  {currentSimPrediction === 'attack' ? '🔴 ATTACK DETECTED' : '🟢 CLEAN'}
+                  <span className="confidence">{Math.round(currentSimConfidence * 100)}%</span>
                 </div>
               </>
             ) : (
@@ -166,42 +238,31 @@ function App() {
             )}
           </div>
           
-          {/* Simulation Progress */}
-          {simProgress.current > 0 && (
+          {isSimulating && simProgress > 0 && (
             <div className="sim-progress">
               <div className="progress-bar">
-                <div className="progress-fill" style={{ width: `${(simProgress.current / simProgress.total) * 100}%` }}></div>
+                <div className="progress-fill" style={{ width: `${simProgress}%` }}></div>
               </div>
-              <div className="progress-text">Image {simProgress.current} of {simProgress.total}</div>
+              <div className="progress-text">Processing image {Math.round(simProgress / 5)} of 20</div>
             </div>
           )}
         </div>
         
-        {/* RIGHT PANEL - CONTROLS & UPLOAD */}
         <div className="controls-panel">
           
-          {/* Upload Section */}
           <div className="section upload-section">
             <div className="section-title">📤 UPLOAD IMAGE</div>
             <label className="upload-btn">
               CHOOSE FILE
               <input type="file" accept="image/*" onChange={handleImageUpload} hidden />
             </label>
-            {isUploading && <div className="upload-status">Analyzing...</div>}
             {uploadPreview && (
               <div className="upload-preview">
                 <img src={uploadPreview} alt="Preview" />
-                {uploadResult && (
-                  <div className={`upload-result ${uploadResult.prediction}`}>
-                    {uploadResult.prediction === 'attack' ? '🔴 ATTACK' : '🟢 CLEAN'}
-                    <span className="upload-confidence">{Math.round(uploadResult.confidence * 100)}%</span>
-                  </div>
-                )}
               </div>
             )}
           </div>
           
-          {/* Simulation Controls */}
           <div className="section controls-section">
             <div className="section-title">🎮 SIMULATION</div>
             <div className="button-group">
@@ -211,7 +272,7 @@ function App() {
               <button className="btn-stop" onClick={stopSimulation} disabled={!isSimulating}>
                 ⏹ STOP
               </button>
-              <button className="btn-reset" onClick={resetLogs}>
+              <button className="btn-reset" onClick={resetAll}>
                 🔄 RESET
               </button>
             </div>
@@ -219,7 +280,6 @@ function App() {
         </div>
       </div>
       
-      {/* BOTTOM - TERMINAL LOGS */}
       <div className="logs-panel">
         <div className="logs-header">
           <span>🔻 SIMULATION LOG</span>
@@ -228,18 +288,17 @@ function App() {
           </span>
         </div>
         <div className="logs-body">
-          {logs.length === 0 ? (
+          {alerts.length === 0 ? (
             <div className="log-entry info"> System ready. Click RUN to start simulation...</div>
           ) : (
-            logs.map(log => (
-              <div key={log.id} className={`log-entry ${log.type === 'ATTACK' ? 'attack' : log.type === 'CLEAN' ? 'clean' : 'info'}`}>
-                <span className="log-time">[{log.time}]</span>
-                <span className="log-type">[{log.type}]</span>
-                <span className="log-message">{log.message}</span>
+            alerts.map(alert => (
+              <div key={alert.id} className={`log-entry ${alert.type === 'ATTACK' ? 'attack' : alert.type === 'CLEAN' ? 'clean' : alert.type === 'RAG' ? 'rag' : alert.type === 'TECHNICAL' ? 'technical' : alert.type === 'ACTION' ? 'action' : 'info'}`}>
+                <span className="log-time">[{alert.time}]</span>
+                <span className="log-type">[{alert.type}]</span>
+                <span className="log-message">{alert.message}</span>
               </div>
             ))
           )}
-          <div ref={logsEndRef} />
         </div>
       </div>
     </div>
