@@ -2,315 +2,290 @@ import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 
 function App() {
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const [threatLevel, setThreatLevel] = useState('CLEAR');
-  const [confidence, setConfidence] = useState(0);
-  const [alerts, setAlerts] = useState([]);
-  const [scannedCount, setScannedCount] = useState(0);
-  const [threatCount, setThreatCount] = useState(0);
-  const [isProcessing, setIsProcessing] = useState(false);
+  // Simulation states
   const [isSimulating, setIsSimulating] = useState(false);
-  const [simulationProgress, setSimulationProgress] = useState(0);
-  const [simulationTotal, setSimulationTotal] = useState(0);
+  const [logs, setLogs] = useState([]);
+  const [currentImage, setCurrentImage] = useState(null);
+  const [currentPrediction, setCurrentPrediction] = useState(null);
+  const [stats, setStats] = useState({ total: 0, clean: 0, attack: 0 });
+  const [simulationProgress, setSimulationProgress] = useState({ current: 0, total: 20 });
   
-  // Upload feature states
-  const [showUpload, setShowUpload] = useState(false);
+  // Upload states
   const [uploadPreview, setUploadPreview] = useState(null);
+  const [uploadResult, setUploadResult] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
+  
+  // Camera states
+  const videoRef = useRef(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraPrediction, setCameraPrediction] = useState(null);
+  
+  // Interval ref for simulation
+  const simulationInterval = useRef(null);
 
-  // Predefined test images (clean and adversarial)
-  const testImages = [
-    // Clean images (should show CLEAR)
-    { path: '/test_images/clean_tank1.jpg', label: 'clean', name: 'Clean Tank 1' },
-    { path: '/test_images/clean_tank2.jpg', label: 'clean', name: 'Clean Tank 2' },
-    { path: '/test_images/clean_apc1.jpg', label: 'clean', name: 'Clean APC 1' },
-    { path: '/test_images/clean_truck1.jpg', label: 'clean', name: 'Clean Truck 1' },
-    { path: '/test_images/clean_jeep1.jpg', label: 'clean', name: 'Clean Jeep 1' },
-    { path: '/test_images/clean_tank3.jpg', label: 'clean', name: 'Clean Tank 3' },
-    { path: '/test_images/clean_apc2.jpg', label: 'clean', name: 'Clean APC 2' },
-    { path: '/test_images/clean_truck2.jpg', label: 'clean', name: 'Clean Truck 2' },
-    // Adversarial images (should show ATTACK)
-    { path: '/test_images/adv_white_tape1.jpg', label: 'attack', name: 'White Tape Attack 1' },
-    { path: '/test_images/adv_white_tape2.jpg', label: 'attack', name: 'White Tape Attack 2' },
-    { path: '/test_images/adv_red_patch1.jpg', label: 'attack', name: 'Red Patch Attack 1' },
-    { path: '/test_images/adv_red_patch2.jpg', label: 'attack', name: 'Red Patch Attack 2' },
-    { path: '/test_images/adv_yellow_tape1.jpg', label: 'attack', name: 'Yellow Tape Attack 1' },
-    { path: '/test_images/adv_camouflage1.jpg', label: 'attack', name: 'Camouflage Attack 1' },
-    { path: '/test_images/adv_checkerboard1.jpg', label: 'attack', name: 'Checkerboard Attack 1' },
-    { path: '/test_images/adv_woodland1.jpg', label: 'attack', name: 'Woodland Camo Attack 1' },
-  ];
-
-  // Start video stream
+  // Start camera
   useEffect(() => {
-    const startVideo = async () => {
+    const startCamera = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
+          setCameraActive(true);
         }
       } catch (err) {
-        console.error("Camera error:", err);
+        addLog('ERROR', 'Camera access denied', 'system');
       }
     };
-    startVideo();
+    startCamera();
   }, []);
 
-  // Function to analyze a single image (from file or blob)
-  const analyzeImage = async (imageFile, imageName = 'image') => {
+  // Add log entry
+  const addLog = (type, message, prediction = null) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogs(prev => [{
+      id: Date.now(),
+      time: timestamp,
+      type: type,
+      message: message,
+      prediction: prediction
+    }, ...prev].slice(0, 100));
+  };
+
+  // Fetch next image from backend
+  const fetchNextImage = async () => {
     try {
-      const formData = new FormData();
-      formData.append('file', imageFile, imageName);
+      const response = await fetch('http://localhost:8000/simulate/next');
+      const data = await response.json();
       
-      const response = await fetch('http://localhost:8000/api/predict', {
-        method: 'POST',
-        body: formData,
+      if (data.error) {
+        addLog('ERROR', data.error, null);
+        return null;
+      }
+      
+      return data;
+    } catch (error) {
+      addLog('ERROR', 'Failed to connect to backend', null);
+      return null;
+    }
+  };
+
+  // Process one simulation step
+  const processSimulationStep = async () => {
+    const result = await fetchNextImage();
+    
+    if (result) {
+      // Update current image display
+      setCurrentImage(result.image_path);
+      setCurrentPrediction(result.prediction);
+      setSimulationProgress({ current: result.index, total: result.total });
+      
+      // Update stats
+      setStats(prev => {
+        const newStats = { ...prev, total: prev.total + 1 };
+        if (result.prediction === 'attack') {
+          newStats.attack += 1;
+        } else {
+          newStats.clean += 1;
+        }
+        return newStats;
       });
       
-      const result = await response.json();
-      
-      if (result.success) {
-        const isAttack = result.prediction === 1;
-        const confidenceValue = result.confidence;
-        
-        if (isAttack) {
-          setThreatLevel('CRITICAL');
-          setConfidence(confidenceValue);
-          setThreatCount(prev => prev + 1);
-          setAlerts(prev => [{
-            id: Date.now(),
-            time: new Date().toLocaleTimeString(),
-            confidence: confidenceValue,
-            name: imageName
-          }, ...prev].slice(0, 10));
-        } else {
-          setThreatLevel('CLEAR');
-          setConfidence(confidenceValue);
-        }
-        setScannedCount(prev => prev + 1);
-        return { isAttack, confidence: confidenceValue };
-      }
-    } catch (error) {
-      console.error("API Error:", error);
+      // Add log entry
+      const confidencePercent = Math.round(result.confidence * 100);
+      addLog(
+        result.prediction.toUpperCase(),
+        `${result.filename} → ${result.prediction.toUpperCase()} (${confidencePercent}%)`,
+        result.prediction
+      );
     }
-    return null;
   };
 
-  // Simulation function - scans multiple images
+  // Start simulation (infinite loop)
   const startSimulation = async () => {
+    if (simulationInterval.current) return;
+    
     setIsSimulating(true);
-    setSimulationProgress(0);
-    setSimulationTotal(testImages.length);
-    setAlerts([]);
-    setScannedCount(0);
-    setThreatCount(0);
+    addLog('INFO', 'Simulation started - infinite loop mode', null);
     
-    for (let i = 0; i < testImages.length; i++) {
-      const img = testImages[i];
-      setSimulationProgress(i + 1);
-      
-      // Fetch the image from public folder
-      try {
-        const response = await fetch(img.path);
-        const blob = await response.blob();
-        const file = new File([blob], `${img.name}.jpg`, { type: 'image/jpeg' });
-        
-        setThreatLevel('PROCESSING');
-        await analyzeImage(file, img.name);
-        
-        // Wait 1 second between images for better visualization
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      } catch (error) {
-        console.error(`Failed to load image: ${img.path}`, error);
-      }
-    }
+    // Reset stats
+    setStats({ total: 0, clean: 0, attack: 0 });
+    setCurrentPrediction(null);
     
-    setIsSimulating(false);
-    setThreatLevel('CLEAR');
-    alert(`Simulation Complete!\n\nScanned: ${scannedCount}\nThreats Detected: ${threatCount}\nAccuracy: ${((threatCount / scannedCount) * 100).toFixed(1)}%`);
+    // Process first image immediately
+    await processSimulationStep();
+    
+    // Set interval for subsequent images
+    simulationInterval.current = setInterval(async () => {
+      await processSimulationStep();
+    }, 1500); // 1.5 seconds delay
   };
 
-  // Camera scanning (original)
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      if (videoRef.current && videoRef.current.videoWidth > 0 && !isProcessing && !showUpload && !isSimulating) {
-        setIsProcessing(true);
-        
-        try {
-          const canvas = canvasRef.current;
-          const video = videoRef.current;
-          
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          
-          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
-          
-          const formData = new FormData();
-          formData.append('file', blob, 'frame.jpg');
-          
-          const response = await fetch('http://localhost:8000/api/predict', {
-            method: 'POST',
-            body: formData,
-          });
-          
-          const result = await response.json();
-          
-          if (result.success) {
-            const isAttack = result.prediction === 1;
-            const confidenceValue = result.confidence;
-            
-            if (isAttack) {
-              setThreatLevel('CRITICAL');
-              setConfidence(confidenceValue);
-              setThreatCount(prev => prev + 1);
-              setAlerts(prev => [{
-                id: Date.now(),
-                time: new Date().toLocaleTimeString(),
-                confidence: confidenceValue,
-                name: 'Camera Feed'
-              }, ...prev].slice(0, 10));
-            } else {
-              setThreatLevel('CLEAR');
-              setConfidence(confidenceValue);
-            }
-            setScannedCount(prev => prev + 1);
-          }
-        } catch (error) {
-          console.error("API Error:", error);
-        } finally {
-          setIsProcessing(false);
-        }
-      }
-    }, 2000);
+  // Stop simulation
+  const stopSimulation = () => {
+    if (simulationInterval.current) {
+      clearInterval(simulationInterval.current);
+      simulationInterval.current = null;
+    }
+    setIsSimulating(false);
+    addLog('INFO', 'Simulation stopped', null);
+  };
 
-    return () => clearInterval(interval);
-  }, [isProcessing, showUpload, isSimulating]);
+  // Reset logs
+  const resetLogs = () => {
+    setLogs([]);
+    setStats({ total: 0, clean: 0, attack: 0 });
+    setCurrentPrediction(null);
+    setCurrentImage(null);
+    addLog('INFO', 'Logs cleared', null);
+  };
 
   // Handle image upload
   const handleImageUpload = async (event) => {
     const file = event.target.files[0];
-    if (file) {
-      setUploadPreview(URL.createObjectURL(file));
-      setShowUpload(true);
-      setThreatLevel('PROCESSING');
+    if (!file) return;
+    
+    setUploadPreview(URL.createObjectURL(file));
+    setIsUploading(true);
+    setUploadResult(null);
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+      const response = await fetch('http://localhost:8000/predict', {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await response.json();
       
-      await analyzeImage(file, 'Uploaded Image');
+      setUploadResult(result);
+      addLog(
+        result.prediction.toUpperCase(),
+        `Upload: ${file.name} → ${result.prediction.toUpperCase()} (${Math.round(result.confidence * 100)}%)`,
+        result.prediction
+      );
+    } catch (error) {
+      addLog('ERROR', `Upload failed: ${file.name}`, null);
+    } finally {
+      setIsUploading(false);
+      setTimeout(() => setUploadPreview(null), 3000);
     }
   };
 
-  const closeUpload = () => {
-    setShowUpload(false);
-    setUploadPreview(null);
-    setThreatLevel('CLEAR');
-    setConfidence(0);
-  };
-
   return (
-    <div className="military-dashboard">
-      <canvas ref={canvasRef} style={{ display: 'none' }} />
-      
-      {/* Video Feed */}
-      <div className="video-container">
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className="video-feed"
-        />
-      </div>
-
-      {/* Control Buttons - Top Right */}
-      <div className="control-buttons">
-        <button 
-          className="simulate-btn"
-          onClick={startSimulation}
-          disabled={isSimulating}
-        >
-          {isSimulating ? `SIMULATING... ${simulationProgress}/${simulationTotal}` : '🎯 RUN SIMULATION'}
-        </button>
+    <div className="dashboard">
+      {/* Main Layout */}
+      <div className="main-grid">
         
-        <label htmlFor="image-upload" className="upload-icon">
-          📷
-        </label>
-        <input
-          type="file"
-          accept="image/*"
-          onChange={handleImageUpload}
-          id="image-upload"
-          style={{ display: 'none' }}
-        />
-      </div>
-
-      {/* Simulation Progress Bar */}
-      {isSimulating && (
-        <div className="simulation-progress">
-          <div className="progress-bar">
-            <div 
-              className="progress-fill" 
-              style={{ width: `${(simulationProgress / simulationTotal) * 100}%` }}
-            ></div>
+        {/* Left Panel - Video Feed */}
+        <div className="video-panel">
+          <div className="panel-title">📹 DRONE CAMERA FEED</div>
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="video-feed"
+          />
+          {cameraPrediction && (
+            <div className={`camera-prediction ${cameraPrediction}`}>
+              {cameraPrediction.toUpperCase()}
+            </div>
+          )}
+        </div>
+        
+        {/* Right Panel - Simulation & Upload */}
+        <div className="sim-panel">
+          
+          {/* Upload Section */}
+          <div className="upload-section">
+            <div className="panel-title">📤 UPLOAD IMAGE</div>
+            <label className="upload-btn">
+              CHOOSE FILE
+              <input type="file" accept="image/*" onChange={handleImageUpload} hidden />
+            </label>
+            {isUploading && <div className="upload-status">Analyzing...</div>}
+            {uploadResult && (
+              <div className={`upload-result ${uploadResult.prediction}`}>
+                {uploadResult.prediction === 'attack' ? '🔴 ATTACK DETECTED' : '🟢 CLEAN'}
+                <span>Confidence: {Math.round(uploadResult.confidence * 100)}%</span>
+              </div>
+            )}
           </div>
-          <div className="progress-text">
-            Scanning Image {simulationProgress} of {simulationTotal}
+          
+          {/* Simulation Controls */}
+          <div className="sim-controls">
+            <div className="panel-title">🎮 SIMULATION CONTROL</div>
+            <div className="button-group">
+              <button 
+                className="btn-start" 
+                onClick={startSimulation}
+                disabled={isSimulating}
+              >
+                ▶ RUN SIMULATION
+              </button>
+              <button 
+                className="btn-stop" 
+                onClick={stopSimulation}
+                disabled={!isSimulating}
+              >
+                ⏹ STOP
+              </button>
+              <button className="btn-reset" onClick={resetLogs}>
+                🔄 RESET LOGS
+              </button>
+            </div>
+          </div>
+          
+          {/* Current Image Display */}
+          <div className="current-image">
+            <div className="panel-title">🖼 CURRENT IMAGE</div>
+            <div className="image-container">
+              {currentImage ? (
+                <>
+                  <img src={`http://localhost:8000${currentImage}`} alt="Current" />
+                  <div className={`prediction-badge ${currentPrediction}`}>
+                    {currentPrediction === 'attack' ? '🔴 ATTACK' : '🟢 CLEAN'}
+                  </div>
+                </>
+              ) : (
+                <div className="no-image">No image processing</div>
+              )}
+            </div>
+          </div>
+          
+          {/* Statistics */}
+          <div className="stats-panel">
+            <div className="panel-title">📊 STATISTICS</div>
+            <div className="stats-grid">
+              <div className="stat">TOTAL: {stats.total}</div>
+              <div className="stat clean">CLEAN: {stats.clean}</div>
+              <div className="stat attack">ATTACK: {stats.attack}</div>
+              <div className="stat">ACCURACY: {stats.total > 0 ? Math.round((stats.clean / stats.total) * 100) : 0}%</div>
+            </div>
           </div>
         </div>
-      )}
-
-      {/* Upload Preview Modal */}
-      {showUpload && uploadPreview && (
-        <div className="upload-preview-modal">
-          <div className="upload-preview-content">
-            <button className="close-upload" onClick={closeUpload}>✕</button>
-            <img src={uploadPreview} alt="Uploaded" className="upload-preview-img" />
-            <p className="upload-preview-text">Analyzing uploaded image...</p>
-          </div>
-        </div>
-      )}
-
-      {/* Status Bar */}
-      <div className="status-bar">
-        <div className="system-status">
-          <span className="status-dot active"></span>
-          <span>SYSTEM ACTIVE</span>
-        </div>
-        <div className="stats">
-          SCANNED: {scannedCount} | THREATS: {threatCount}
-        </div>
-        <div className="timestamp">
-          {new Date().toLocaleTimeString()}
-        </div>
+        
       </div>
-
-      {/* Threat Indicator */}
-      <div className={`threat-indicator threat-${threatLevel.toLowerCase()}`}>
-        <div className="threat-level">
-          {threatLevel === 'CRITICAL' ? '🔴 ATTACK DETECTED' :
-           threatLevel === 'HIGH' ? '🟠 HIGH THREAT' :
-           threatLevel === 'MEDIUM' ? '🟡 CAUTION' :
-           threatLevel === 'PROCESSING' ? '⏳ ANALYZING...' :
-           threatLevel === 'ERROR' ? '⚠️ ERROR' :
-           '🟢 CLEAR'}
+      
+      {/* Bottom - Terminal Log */}
+      <div className="terminal-panel">
+        <div className="terminal-header">
+          <span>🔻 SIMULATION LOG</span>
+          <span className="terminal-status">
+            {isSimulating ? '🟢 RUNNING' : '⚫ STOPPED'}
+            {simulationProgress.current > 0 && ` | IMAGE ${simulationProgress.current}/${simulationProgress.total}`}
+          </span>
         </div>
-        <div className="confidence">
-          CONFIDENCE: {Math.round(confidence * 100)}%
-        </div>
-      </div>
-
-      {/* Alert Log */}
-      <div className="alert-log">
-        <div className="alert-header">THREAT LOG</div>
-        <div className="alert-list">
-          {alerts.length === 0 ? (
-            <div className="no-alerts">— NO THREATS —</div>
+        <div className="terminal-body">
+          {logs.length === 0 ? (
+            <div className="terminal-line"> System ready. Click RUN SIMULATION to start...</div>
           ) : (
-            alerts.map(alert => (
-              <div key={alert.id} className="alert-entry">
-                <span className="alert-time">{alert.time}</span>
-                <span className="alert-threat">ATTACK</span>
-                <span className="alert-name">{alert.name}</span>
-                <span className="alert-conf">{Math.round(alert.confidence * 100)}%</span>
+            logs.map(log => (
+              <div key={log.id} className={`terminal-line ${log.type === 'ATTACK' ? 'attack' : log.type === 'CLEAN' ? 'clean' : 'info'}`}>
+                <span className="terminal-time">[{log.time}]</span>
+                <span className="terminal-type">[{log.type}]</span>
+                <span className="terminal-msg">{log.message}</span>
               </div>
             ))
           )}
