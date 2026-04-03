@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 
+
 function App() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -20,6 +21,7 @@ function App() {
   
   // Upload state
   const [uploadPreview, setUploadPreview] = useState(null);
+  const [uploadResult, setUploadResult] = useState(null);
   
   const simulationInterval = useRef(null);
   const API_BASE = 'http://localhost:8000';
@@ -40,19 +42,18 @@ function App() {
   }, []);
 
   // Add alert to log
-  const addAlert = (type, message, confidenceValue = null, details = null) => {
+  const addAlert = (type, message, confidenceValue = null) => {
     const timestamp = new Date().toLocaleTimeString();
     setAlerts(prev => [{
       id: Date.now(),
       time: timestamp,
       type: type,
       message: message,
-      confidence: confidenceValue,
-      details: details
-    }, ...prev].slice(0, 30));
+      confidence: confidenceValue
+    }, ...prev].slice(0, 20));
   };
 
-  // Analyze image with backend
+  // Analyze image with backend (REAL model)
   const analyzeImage = async (imageBlob, sourceName) => {
     try {
       const formData = new FormData();
@@ -117,7 +118,7 @@ function App() {
     return () => clearInterval(interval);
   }, [isProcessing, isSimulating]);
 
-  // Simulation
+  // Simulation - scan 20 images using backend
   const startSimulation = async () => {
     if (simulationInterval.current) return;
     
@@ -148,6 +149,7 @@ function App() {
         addAlert('ERROR', `Failed to load ${i}.jpeg`);
       }
       
+      // Wait 1.5 seconds between images
       await new Promise(resolve => setTimeout(resolve, 1500));
     }
     
@@ -157,6 +159,7 @@ function App() {
     addAlert('INFO', 'Simulation complete!');
   };
 
+  // Stop simulation
   const stopSimulation = () => {
     setIsSimulating(false);
     setCurrentSimImage(null);
@@ -164,6 +167,7 @@ function App() {
     addAlert('INFO', 'Simulation stopped');
   };
 
+  // Reset all
   const resetAll = () => {
     setAlerts([]);
     setScannedCount(0);
@@ -173,6 +177,7 @@ function App() {
     addAlert('INFO', 'System reset');
   };
 
+  // Handle image upload
   const handleImageUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -185,28 +190,22 @@ function App() {
     }, 3000);
   };
 
-  // RAG Analysis Handler with detailed response
+  // RAG Analysis Handler
   const getRAGAnalysis = async () => {
     if (threatLevel !== 'CRITICAL') {
       addAlert('INFO', 'No active threat to analyze. Run simulation or scan an attack first.');
       return;
     }
     
-    addAlert('RAG', 'Fetching AI threat analysis from Hugging Face...');
+    addAlert('RAG', 'Fetching AI threat analysis...');
     
     try {
       const response = await fetch(`${API_BASE}/api/analyze-threat?prediction=attack&confidence=${confidence}&filename=current_frame`);
       const data = await response.json();
       
-      addAlert('RAG', `📋 REASON: ${data.reason || data.threat_assessment}`);
-      
-      if (data.technical) {
-        addAlert('TECHNICAL', `🔬 ${data.technical}`);
-      }
-      
-      addAlert('ACTION', `⚡ ACTION: ${data.recommended_action || data.action}`);
-      addAlert('RAG', `🎯 Severity: ${data.severity} | Confidence: ${Math.round(confidence * 100)}%`);
-      
+      addAlert('RAG', `Assessment: ${data.threat_assessment}`);
+      addAlert('ACTION', `Recommendation: ${data.recommended_action}`);
+      addAlert('RAG', `Attack Type: ${data.attack_type || 'Unknown'} | Severity: ${data.severity}`);
     } catch (error) {
       addAlert('ERROR', 'RAG analysis failed');
     }
@@ -216,12 +215,14 @@ function App() {
     <div className="dashboard">
       <canvas ref={canvasRef} style={{ display: 'none' }} />
       
+      {/* RAG Button - Top Right */}
       <button className="rag-button" onClick={getRAGAnalysis}>
         🤖 RAG ANALYSIS
       </button>
       
       <div className="main-layout">
         
+        {/* LEFT PANEL - IMAGE DISPLAY */}
         <div className="image-panel">
           <div className="panel-header">🎯 CURRENT IMAGE</div>
           <div className="image-container">
@@ -230,7 +231,6 @@ function App() {
                 <img src={`${API_BASE}${currentSimImage}`} alt="Current" className="current-image" />
                 <div className={`prediction-overlay ${currentSimPrediction}`}>
                   {currentSimPrediction === 'attack' ? '🔴 ATTACK DETECTED' : '🟢 CLEAN'}
-                  <span className="confidence">{Math.round(currentSimConfidence * 100)}%</span>
                 </div>
               </>
             ) : (
@@ -238,18 +238,20 @@ function App() {
             )}
           </div>
           
+          {/* Simulation Progress */}
           {isSimulating && simProgress > 0 && (
             <div className="sim-progress">
               <div className="progress-bar">
                 <div className="progress-fill" style={{ width: `${simProgress}%` }}></div>
               </div>
-              <div className="progress-text">Processing image {Math.round(simProgress / 5)} of 20</div>
             </div>
           )}
         </div>
         
+        {/* RIGHT PANEL - CONTROLS & UPLOAD */}
         <div className="controls-panel">
           
+          {/* Upload Section */}
           <div className="section upload-section">
             <div className="section-title">📤 UPLOAD IMAGE</div>
             <label className="upload-btn">
@@ -263,6 +265,7 @@ function App() {
             )}
           </div>
           
+          {/* Simulation Controls */}
           <div className="section controls-section">
             <div className="section-title">🎮 SIMULATION</div>
             <div className="button-group">
@@ -280,6 +283,7 @@ function App() {
         </div>
       </div>
       
+      {/* BOTTOM - TERMINAL LOGS */}
       <div className="logs-panel">
         <div className="logs-header">
           <span>🔻 SIMULATION LOG</span>
@@ -292,7 +296,7 @@ function App() {
             <div className="log-entry info"> System ready. Click RUN to start simulation...</div>
           ) : (
             alerts.map(alert => (
-              <div key={alert.id} className={`log-entry ${alert.type === 'ATTACK' ? 'attack' : alert.type === 'CLEAN' ? 'clean' : alert.type === 'RAG' ? 'rag' : alert.type === 'TECHNICAL' ? 'technical' : alert.type === 'ACTION' ? 'action' : 'info'}`}>
+              <div key={alert.id} className={`log-entry ${alert.type === 'ATTACK' ? 'attack' : alert.type === 'CLEAN' ? 'clean' : alert.type === 'RAG' ? 'rag' : alert.type === 'ACTION' ? 'action' : 'info'}`}>
                 <span className="log-time">[{alert.time}]</span>
                 <span className="log-type">[{alert.type}]</span>
                 <span className="log-message">{alert.message}</span>
