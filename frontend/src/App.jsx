@@ -24,6 +24,7 @@ function App() {
   const [uploadResult, setUploadResult] = useState(null);
   
   const simulationInterval = useRef(null);
+  const shouldStopSimulation = useRef(false);
   const API_BASE = 'http://localhost:8000';
 
   // Start video stream
@@ -118,17 +119,21 @@ function App() {
     return () => clearInterval(interval);
   }, [isProcessing, isSimulating]);
 
-  // Simulation - scan 20 images using backend
+  // Simulation - INFINITE LOOP scanning images using backend
   const startSimulation = async () => {
-    if (simulationInterval.current) return;
+    if (isSimulating) return;
     
+    // Reset stop flag
+    shouldStopSimulation.current = false;
     setIsSimulating(true);
-    setSimProgress(0);
-    addAlert('INFO', 'Simulation started - scanning 20 images');
+    addAlert('INFO', 'Simulation started - scanning images continuously');
     
-    for (let i = 1; i <= 20; i++) {
-      setSimProgress(Math.round((i / 20) * 100));
-      setCurrentSimImage(`/simulation/${i}.jpeg`);
+    let imageIndex = 1;
+    
+    while (!shouldStopSimulation.current) {
+      // Update progress (percentage of current cycle through 20 images)
+      setSimProgress(Math.round((imageIndex / 20) * 100));
+      setCurrentSimImage(`/simulation/${imageIndex}.jpeg`);
       
       try {
         const response = await fetch(`${API_BASE}/simulate/next`);
@@ -146,29 +151,42 @@ function App() {
         }
         
       } catch (error) {
-        addAlert('ERROR', `Failed to load ${i}.jpeg`);
+        addAlert('ERROR', `Failed to load image ${imageIndex}`);
       }
+      
+      // Check if we should stop before waiting
+      if (shouldStopSimulation.current) break;
       
       // Wait 1.5 seconds between images
       await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Increment image index and loop back to 1 after 20
+      imageIndex = (imageIndex % 20) + 1;
     }
     
+    // Cleanup when stopped
     setIsSimulating(false);
     setCurrentSimImage(null);
     setCurrentSimPrediction(null);
-    addAlert('INFO', 'Simulation complete!');
+    setSimProgress(0);
+    addAlert('INFO', 'Simulation stopped');
   };
 
   // Stop simulation
   const stopSimulation = () => {
+    if (!isSimulating) return;
+    
+    // Set flag to stop the simulation loop
+    shouldStopSimulation.current = true;
     setIsSimulating(false);
-    setCurrentSimImage(null);
-    setCurrentSimPrediction(null);
-    addAlert('INFO', 'Simulation stopped');
   };
 
   // Reset all
   const resetAll = () => {
+    // Stop simulation if running
+    if (isSimulating) {
+      stopSimulation();
+    }
     setAlerts([]);
     setScannedCount(0);
     setThreatCount(0);
