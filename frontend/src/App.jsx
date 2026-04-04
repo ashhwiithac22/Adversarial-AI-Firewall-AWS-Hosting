@@ -223,7 +223,7 @@ function App() {
       
       addAlert('RAG', `Assessment: ${data.threat_assessment}`);
       addAlert('ACTION', `Recommendation: ${data.recommended_action}`);
-      addAlert('RAG', `Attack Type: ${data.attack_type || 'Unknown'} | Severity: ${data.severity}`);
+      addAlert('RAG', `Attack Type: ${data.attack_type || 'Adversarial Patches identified'} | Severity: ${data.severity}`);
     } catch (error) {
       addAlert('ERROR', 'RAG analysis failed');
     }

@@ -300,7 +300,7 @@ async def predict(file: UploadFile = File(...)):
 # RAG ENDPOINT WITH HUGGING FACE
 # ============================================================
 @app.get("/api/analyze-threat")
-async def analyze_threat(prediction: str, confidence: float, filename: str = "unknown"):
+async def analyze_threat(prediction: str, confidence: float, filename: str = "adversarial patches"):
     if prediction != "attack":
         return {
             "threat_assessment": "No threat detected.",
