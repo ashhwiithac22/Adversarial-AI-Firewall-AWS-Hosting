@@ -45,7 +45,6 @@ dataset_full/
 *.csv
 
 # Model weights (too large)
-*.pth
 *.pt
 *.h5
 *.hdf5
