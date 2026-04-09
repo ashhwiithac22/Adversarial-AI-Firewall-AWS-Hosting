@@ -39,9 +39,6 @@ Thumbs.db
 # Dataset images (too large for GitHub)
 dataset/
 dataset_full/
-*.png
-*.jpg
-*.jpeg
 *.jfif
 
 # CSV files
