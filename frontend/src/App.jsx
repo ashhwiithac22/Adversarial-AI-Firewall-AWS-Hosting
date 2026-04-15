@@ -25,7 +25,7 @@ function App() {
   
   const simulationInterval = useRef(null);
   const shouldStopSimulation = useRef(false);
-  const API_BASE = 'http://localhost:8000';
+  const API_BASE = 'http://3.110.220.205:8000';
 
   // Start video stream
   useEffect(() => {
@@ -246,7 +246,7 @@ function App() {
           <div className="image-container">
             {currentSimImage ? (
               <>
-                <img src={`${API_BASE}${currentSimImage}`} alt="Current" className="current-image" />
+                <img src={`https://adversarial-firewall-frontend.s3.ap-south-1.amazonaws.com${currentSimImage}`} alt="Current" className="current-image" />
                 <div className={`prediction-overlay ${currentSimPrediction}`}>
                   {currentSimPrediction === 'attack' ? '🔴 ATTACK DETECTED' : '🟢 CLEAN'}
                 </div>
