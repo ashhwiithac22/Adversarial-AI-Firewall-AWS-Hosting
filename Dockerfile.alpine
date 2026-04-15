@@ -1,0 +1,64 @@
+# Dockerfile.alpine - Ultra slim <1GB image
+FROM python:3.11-alpine AS builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache --virtual .build-deps \
+    gcc \
+    musl-dev \
+    jpeg-dev \
+    zlib-dev \
+    python3-dev \
+    libffi-dev
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install Python packages to temporary location
+RUN pip install --no-cache-dir --user \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+    torch==2.0.1 \
+    torchvision==0.15.2
+
+RUN pip install --no-cache-dir --user \
+    fastapi==0.104.1 \
+    uvicorn[standard]==0.24.0 \
+    python-multipart==0.0.6 \
+    pillow==10.1.0 \
+    numpy==1.24.3 \
+    python-dotenv==1.0.0
+
+# Final stage
+FROM python:3.11-alpine
+
+WORKDIR /app
+
+# Install runtime dependencies only
+RUN apk add --no-cache \
+    libjpeg-turbo \
+    libpng \
+    libstdc++ \
+    curl
+
+# Copy Python packages from builder
+COPY --from=builder /root/.local /root/.local
+
+# Copy application files
+COPY backend/ ./backend/
+COPY models/ ./models/
+COPY frontend/public/ ./frontend/public/
+
+# Create simulation directory
+RUN mkdir -p /app/frontend/public/simulation
+
+# Add to PATH
+ENV PATH=/root/.local/bin:$PATH
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+EXPOSE 8000
+
+CMD ["uvicorn", "backend.api:app", "--host", "0.0.0.0", "--port", "8000"]
