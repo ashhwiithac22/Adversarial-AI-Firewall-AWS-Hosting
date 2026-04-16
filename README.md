@@ -45,8 +45,7 @@
 ```
 --- 
 
-## 
-🎨 Frontend (React)
+##  🎨 Frontend (React)
 - Hosted on S3 with CloudFront CDN
 - Simulation mode scanning 20 images
 - Image upload feature
@@ -54,7 +53,7 @@
 - Color-coded results (red = attack, green = clean)
 - Confidence scores shown
 
--- 
+--- 
 
 ## 🔐 IAM Role
 
@@ -62,6 +61,7 @@ Policies attached:
 
 - AmazonEC2ContainerRegistryReadOnly
 - CloudWatchAgentServerPolicy
+
 --- 
 
 ## 🚀 Deployment Steps Performed
