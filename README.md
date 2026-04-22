@@ -23,6 +23,27 @@
 
 ---
 
+### 🖥️ EC2 Instance
+![EC2](EC2_Instance.png)
+
+### 📦 ECR
+![ECR](ECR.png)
+
+### 🗂️ S3
+![S3](S3.png)
+
+### 📊 CloudWatch
+![CloudWatch](CloudWatch.png)
+
+### 🌍 CloudFront
+![CloudFront](CloudFront.png)
+
+### 🔐 IAM
+![IAM](IAM_Roles.png)
+
+### 🌐 VPC
+![VPC](VPC.png)
+
 ## 🔧 Backend API Endpoints
 
 | Endpoint | Method | Description |
@@ -32,6 +53,9 @@
 | `/simulate/next` | GET | Next simulation image |
 | `/simulate/reset` | GET | Reset simulation |
 | `/docs` | GET | Swagger UI documentation |
+
+### ⚙️ Backend
+![Backend](Backend.png)
 
 ### API Response
 ```json
@@ -52,6 +76,13 @@
 - Live logs display
 - Color-coded results (red = attack, green = clean)
 - Confidence scores shown
+
+### 🎨 Frontend
+![Frontend](Frontend.png)
+
+### 🎨 Frontend (Simulation)
+![Frontend2](Frontend1.png)
+
 
 --- 
 
